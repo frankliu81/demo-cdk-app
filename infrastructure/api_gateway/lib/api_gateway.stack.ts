@@ -1,0 +1,168 @@
+import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
+import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as apiGateway from "aws-cdk-lib/aws-apigateway";
+import { Construct } from "constructs";
+import {
+  API_GATEWAY_CORS_HEADERS,
+  ORIGINS,
+  METHODS,
+  PUBLIC_API_ALLOWED_CORS_HEADERS_CORS,
+} from "./http";
+
+export class JobiApiGateway extends Stack {
+  constructor(scope?: Construct, id?: string, props?: StackProps) {
+    super(scope, id, props);
+
+    const logGroup = new logs.LogGroup(this, "logGroup", {
+      retention: logs.RetentionDays.SIX_MONTHS,
+    });
+
+    const restApi = new apiGateway.RestApi(this, "restApi", {
+      restApiName: "JOBI API Gateway",
+      description: "Testing dynamic route adding to the API gateway",
+
+      defaultMethodOptions: {
+        authorizationType: apiGateway.AuthorizationType.NONE,
+      },
+
+      defaultCorsPreflightOptions: {
+        allowOrigins: [...ORIGINS],
+        allowMethods: [...METHODS],
+        allowHeaders: [...PUBLIC_API_ALLOWED_CORS_HEADERS_CORS],
+        allowCredentials: true,
+        maxAge: Duration.hours(1),
+      },
+
+      deployOptions: {
+        /* Naming */
+        description: "Main Stage",
+
+        /* Logging */
+        loggingLevel: apiGateway.MethodLoggingLevel.INFO,
+        accessLogDestination: new apiGateway.LogGroupLogDestination(logGroup),
+        accessLogFormat: apiGateway.AccessLogFormat.jsonWithStandardFields({
+          caller: false,
+
+          httpMethod: true,
+          ip: true,
+          // DM: HTTPs is enforced
+          protocol: false,
+          requestTime: true,
+          resourcePath: true,
+          responseLength: true,
+          status: true,
+          user: true,
+        }),
+        metricsEnabled: true,
+        tracingEnabled: true,
+        dataTraceEnabled: true,
+      },
+
+      cloudWatchRole: true,
+      // only on production
+      retainDeployments: true,
+    });
+
+    /* ********************************* */
+    /* Map default API gateway responses */
+    /* ********************************* */
+    (
+      [
+        apiGateway.ResponseType.UNAUTHORIZED,
+        apiGateway.ResponseType.DEFAULT_5XX,
+        apiGateway.ResponseType.DEFAULT_4XX,
+      ] as Array<apiGateway.ResponseType>
+    ).forEach((type) => {
+      let statusCode: string | undefined = undefined;
+
+      switch (type) {
+        case apiGateway.ResponseType.UNAUTHORIZED:
+        case apiGateway.ResponseType.DEFAULT_4XX:
+        case apiGateway.ResponseType.DEFAULT_5XX: {
+          statusCode = undefined; // DO NOT CHANGE DEFAULT STATUS CODE
+          break;
+        }
+
+        default: {
+          throw new Error(
+            `No status code found for response type '${type.responseType}'`
+          );
+        }
+      }
+
+      restApi.addGatewayResponse(`restApiGatewayResponse${type.responseType}`, {
+        statusCode,
+        type,
+
+        responseHeaders: {
+          ...API_GATEWAY_CORS_HEADERS,
+        },
+      });
+    });
+
+    new CfnOutput(this, "restApiId", { value: restApi.restApiId });
+    new CfnOutput(this, "restApiLatestStageArn", {
+      value: restApi.deploymentStage.stageArn,
+    });
+    new CfnOutput(this, "restApiRootResourceId", {
+      value: restApi.restApiRootResourceId,
+    });
+
+    const publicApiCognitoAuthorizer =
+      new apiGateway.CognitoUserPoolsAuthorizer(
+        this,
+        "publicApiCognitoAuthorizer",
+        {
+          cognitoUserPools: [
+            cognito.UserPool.fromUserPoolId(
+              this,
+              "publicApiCognitoAuthorizerUserPool1",
+              this.node.tryGetContext("cognitoUserPoolId")
+            ),
+          ],
+        }
+      );
+
+    new CfnOutput(this, "apiGatewayCognitoAuthorizerArn", {
+      value: publicApiCognitoAuthorizer.authorizerArn,
+    });
+
+    new CfnOutput(this, "apiGatewayCognitoAuthorizerId", {
+      value: publicApiCognitoAuthorizer.authorizerId,
+    });
+
+    // DM: We need to have authorizer bound to one method at least
+    //     and since in deployment time of this stack, no route is added yet,
+    //     we add this dummy route which always respond 204 (without content)
+    //     to any authorized requests.
+    restApi.root.addMethod(
+      "GET",
+      new apiGateway.MockIntegration({
+        integrationResponses: [
+          {
+            statusCode: "200",
+          },
+        ],
+        passthroughBehavior: apiGateway.PassthroughBehavior.NEVER,
+        requestTemplates: {
+          "application/json": '{ "statusCode": 200 }',
+        },
+      }),
+      {
+        methodResponses: [{ statusCode: "200" }],
+        authorizationType: apiGateway.AuthorizationType.COGNITO,
+        authorizer: publicApiCognitoAuthorizer,
+      }
+    );
+
+    const v1Resource = new apiGateway.Resource(this, "apiGatewayV1Resource", {
+      parent: restApi.root,
+      pathPart: "v1",
+    });
+
+    new CfnOutput(this, "apiGatewayV1ResourceId", {
+      value: v1Resource.resourceId,
+    });
+  }
+}
