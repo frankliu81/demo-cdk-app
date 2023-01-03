@@ -1,7 +1,8 @@
-import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
+import { Duration, Stack, StackProps } from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as apiGateway from "aws-cdk-lib/aws-apigateway";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import {
   API_GATEWAY_CORS_HEADERS,
@@ -10,8 +11,16 @@ import {
   PUBLIC_API_ALLOWED_CORS_HEADERS_CORS,
 } from "./http";
 
+export type JobiApiGatewayStackProps = StackProps & {
+  scope: string;
+};
+
 export class JobiApiGateway extends Stack {
-  constructor(scope?: Construct, id?: string, props?: StackProps) {
+  constructor(
+    scope?: Construct,
+    id?: string,
+    props?: JobiApiGatewayStackProps
+  ) {
     super(scope, id, props);
 
     const logGroup = new logs.LogGroup(this, "logGroup", {
@@ -19,8 +28,8 @@ export class JobiApiGateway extends Stack {
     });
 
     const restApi = new apiGateway.RestApi(this, "restApi", {
-      restApiName: "JOBI API Gateway",
-      description: "Testing dynamic route adding to the API gateway",
+      restApiName: `jobi-${scope}`,
+      description: `Testing dynamic route adding to the API gateway (${scope})`,
 
       defaultMethodOptions: {
         authorizationType: apiGateway.AuthorizationType.NONE,
@@ -101,14 +110,12 @@ export class JobiApiGateway extends Stack {
       });
     });
 
-    new CfnOutput(this, "restApiId", { value: restApi.restApiId });
-    new CfnOutput(this, "restApiLatestStageArn", {
-      value: restApi.deploymentStage.stageArn,
-    });
-    new CfnOutput(this, "restApiRootResourceId", {
-      value: restApi.restApiRootResourceId,
+    new ssm.StringParameter(this, "restApiId", {
+      parameterName: `/jobi/${props!.scope}/api_gateway_id`,
+      stringValue: restApi.restApiId,
     });
 
+    // DN: We can't load/lookup authorizer by its id or ARN so we don't need to save it
     const publicApiCognitoAuthorizer =
       new apiGateway.CognitoUserPoolsAuthorizer(
         this,
@@ -123,14 +130,6 @@ export class JobiApiGateway extends Stack {
           ],
         }
       );
-
-    new CfnOutput(this, "apiGatewayCognitoAuthorizerArn", {
-      value: publicApiCognitoAuthorizer.authorizerArn,
-    });
-
-    new CfnOutput(this, "apiGatewayCognitoAuthorizerId", {
-      value: publicApiCognitoAuthorizer.authorizerId,
-    });
 
     // DM: We need to have authorizer bound to one method at least
     //     and since in deployment time of this stack, no route is added yet,
@@ -156,13 +155,10 @@ export class JobiApiGateway extends Stack {
       }
     );
 
-    const v1Resource = new apiGateway.Resource(this, "apiGatewayV1Resource", {
+    // DM: We can lookup with pathPart property, so don't need to be saved.
+    new apiGateway.Resource(this, "apiGatewayV1Resource", {
       parent: restApi.root,
       pathPart: "v1",
-    });
-
-    new CfnOutput(this, "apiGatewayV1ResourceId", {
-      value: v1Resource.resourceId,
     });
   }
 }
