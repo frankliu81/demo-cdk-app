@@ -6,8 +6,6 @@ import { JobiApiGateway } from "../lib/api_gateway.stack";
 const app = new cdk.App();
 const scope = process.env.CDK_SCOPE ?? app.node.tryGetContext("CDK_SCOPE");
 
-console.log("S: ", scope);
-
 if (typeof scope !== "string" || scope.length === 0) {
   throw new Error(
     "Please consider adding SCOPE=<scope_name> to the parameters."
