@@ -6,7 +6,7 @@ Microservices demo in AWS CDK
 
 ```sh
 # Create a deployment and you'll get a
-aws-vault exec spg-energy-playground -- aws apigateway create-deployment --rest-api-id <your-rest-api-id> --region <ca-central-1></ca-central-1>
+aws-vault exec spg-energy-playground -- aws apigateway create-deployment --rest-api-id <your-rest-api-id> --region <ca-central-1>
 
 # You'll get the deployment
 createdDate: '2023-01-03T14:02:09-08:00'
