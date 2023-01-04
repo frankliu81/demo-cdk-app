@@ -28,8 +28,10 @@ export class JobiApiGateway extends Stack {
     });
 
     const restApi = new apiGateway.RestApi(this, "restApi", {
-      restApiName: `jobi-${scope}`,
-      description: `Testing dynamic route adding to the API gateway (${scope})`,
+      restApiName: `jobi-${props!.scope}`,
+      description: `Testing dynamic route adding to the API gateway (${
+        props!.scope
+      })`,
 
       defaultMethodOptions: {
         authorizationType: apiGateway.AuthorizationType.NONE,
@@ -114,6 +116,10 @@ export class JobiApiGateway extends Stack {
       parameterName: `/jobi/${props!.scope}/api_gateway_id`,
       stringValue: restApi.restApiId,
     });
+    new ssm.StringParameter(this, "restApiRootResourceId", {
+      parameterName: `/jobi/${props!.scope}/api_gateway_root_resource_id`,
+      stringValue: restApi.restApiRootResourceId,
+    });
 
     // DN: We can't load/lookup authorizer by its id or ARN so we don't need to save it
     const publicApiCognitoAuthorizer =
@@ -156,9 +162,14 @@ export class JobiApiGateway extends Stack {
     );
 
     // DM: We can lookup with pathPart property, so don't need to be saved.
-    new apiGateway.Resource(this, "apiGatewayV1Resource", {
+    const v1Resource = new apiGateway.Resource(this, "apiGatewayV1Resource", {
       parent: restApi.root,
       pathPart: "v1",
+    });
+
+    new ssm.StringParameter(this, "v1ResourceId", {
+      parameterName: `/jobi/${props!.scope}/api_gateway_v1_resource`,
+      stringValue: v1Resource.resourceId,
     });
   }
 }
