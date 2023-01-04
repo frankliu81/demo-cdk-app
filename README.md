@@ -15,3 +15,8 @@ id: <deployment-id>
 # Update the stage (use the generated deployment from the previous command)
 aws-vault exec spg-energy-playground -- aws apigateway update-stage --region ca-central-1 --rest-api-id <your-rest-api-id> --stage-name <stage-name> --patch-operations op='replace',path='/deploymentId',value=<deployment-id>
 ```
+
+## Links
+
+[Deploy a Rest API in API Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-deployments.html)
+[Debug CDK App](https://docs.aws.amazon.com/cdk/v2/guide/cli.html#cli-config)
